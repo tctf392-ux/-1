@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>金鸿集团 · 账单</title>
+  <style>
+    body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial; margin:0; background:#0b0f14; color:#e6edf3;}
+    .wrap{max-width:980px; margin:0 auto; padding:18px;}
+    .card{background:#111823; border:1px solid #1f2a37; border-radius:14px; padding:14px; box-shadow:0 6px 18px rgba(0,0,0,.25); margin-bottom:14px;}
+    .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+    input,select,button{background:#0b1220; color:#e6edf3; border:1px solid #263244; border-radius:10px; padding:10px 12px; font-size:14px;}
+    button{cursor:pointer;}
+    button.primary{background:#d11d2a; border-color:#d11d2a;}
+    .muted{color:#9aa7b2; font-size:13px;}
+    .title{font-size:18px; font-weight:700;}
+    .pill{display:inline-block; padding:6px 10px; border-radius:999px; border:1px solid #263244; background:#0b1220; font-size:13px;}
+    .grid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px;}
+    .kpi{padding:12px; border-radius:12px; border:1px solid #263244; background:#0b1220;}
+    .kpi .v{font-size:18px; font-weight:800; margin-top:6px;}
+    .tabs{display:flex; gap:8px; flex-wrap:wrap;}
+    .tab{padding:8px 12px; border-radius:999px; border:1px solid #263244; background:#0b1220; cursor:pointer; user-select:none;}
+    .tab.active{background:#d11d2a; border-color:#d11d2a;}
+    pre{white-space:pre-wrap; word-break:break-word; background:#0b1220; border:1px solid #263244; border-radius:12px; padding:12px; margin:0;}
+    a{color:#ff6b73;}
+    .err{color:#ff6b73;}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <div>
+          <div class="title" id="pageTitle">📒 金鸿集团 · 完整账单</div>
+          <div class="muted" id="subTitle">HTTPS 外网访问（GitHub Pages）</div>
+        </div>
+        <span class="pill" id="statusPill">未加载</span>
+      </div>
+    </div>
+
+    <div class="card" id="keyCard">
+      <div class="row">
+        <input id="kInput" placeholder="输入账单密钥 k（机器人会给你）" style="flex:1; min-width:260px;">
+        <button class="primary" id="loadBtn">加载账单</button>
+        <button id="copyLinkBtn">复制本页链接</button>
+      </div>
+      <div class="muted" style="margin-top:8px;">
+        说明：你会从机器人消息里拿到一个链接，里面自带 <b>?k=xxxxx</b>，直接打开即可。
+      </div>
+      <div class="err" id="errBox" style="margin-top:8px;"></div>
+    </div>
+
+    <div class="card" id="filtersCard" style="display:none;">
+      <div class="row">
+        <div class="tabs">
+          <div class="tab active" data-mode="today">按日期</div>
+          <div class="tab" data-mode="month">按月份</div>
+          <div class="tab" data-mode="all">全部</div>
+        </div>
+        <span class="muted" id="metaInfo"></span>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <select id="dateSel"></select>
+        <select id="monthSel" style="display:none;"></select>
+        <button id="refreshBtn">刷新</button>
+      </div>
+    </div>
+
+    <div class="card" id="kpiCard" style="display:none;">
+      <div class="grid">
+        <div class="kpi">
+          <div class="muted">总入款（CNY | U）</div>
+          <div class="v" id="kpiIn">-</div>
+        </div>
+        <div class="kpi">
+          <div class="muted">总下发（U）</div>
+          <div class="v" id="kpiOut">-</div>
+        </div>
+        <div class="kpi">
+          <div class="muted">未下发（U）</div>
+          <div class="v" id="kpiRemain">-</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="billCard" style="display:none;">
+      <pre id="billPre">加载中...</pre>
+    </div>
+
+    <div class="card">
+      <div class="muted">
+        如果一直“加载中”：通常是 <b>JSON 路径不对 / bills 目录没生成 / GitHub Pages 没开启</b>。
+      </div>
+    </div>
+  </div>
+
+<script>
+  const statusPill = document.getElementById("statusPill");
+  const errBox = document.getElementById("errBox");
+  const keyCard = document.getElementById("keyCard");
+  const filtersCard = document.getElementById("filtersCard");
+  const kpiCard = document.getElementById("kpiCard");
+  const billCard = document.getElementById("billCard");
+  const billPre = document.getElementById("billPre");
+  const kInput = document.getElementById("kInput");
+  const dateSel = document.getElementById("dateSel");
+  const monthSel = document.getElementById("monthSel");
+  const metaInfo = document.getElementById("metaInfo");
+
+  let DATA = null;
+  let MODE = "today"; // today|month|all
+  let K = "";
+
+  function setStatus(text, ok=true){
+    statusPill.textContent = text;
+    statusPill.style.background = ok ? "#0b1220" : "#2b0b0f";
+    statusPill.style.borderColor = ok ? "#263244" : "#ff6b73";
+  }
+
+  function fmt2(n){ return (Math.round(n*100)/100).toFixed(2); }
+  function safeNum(x){ const v = Number(x); return isFinite(v) ? v : 0; }
+
+  function buildOptions(){
+    // dates + months from records
+    const recs = (DATA && DATA.records) ? DATA.records : [];
+    const dates = new Set();
+    const months = new Set();
+    for(const r of recs){
+      const ts = (r.ts || "");
+      const d = ts.slice(0,10);
+      const m = ts.slice(0,7);
+      if(d.length===10) dates.add(d);
+      if(m.length===7) months.add(m);
+    }
+    const ds = Array.from(dates).sort().reverse();
+    const ms = Array.from(months).sort().reverse();
+
+    dateSel.innerHTML = ds.map(d => `<option value="${d}">${d}</option>`).join("");
+    monthSel.innerHTML = ms.map(m => `<option value="${m}">${m}</option>`).join("");
+
+    if(!ds.length){
+      dateSel.innerHTML = `<option value="">无数据</option>`;
+    }
+    if(!ms.length){
+      monthSel.innerHTML = `<option value="">无数据</option>`;
+    }
+  }
+
+  function filterRecs(){
+    const recs = (DATA && DATA.records) ? DATA.records : [];
+    if(MODE==="all") return recs;
+    if(MODE==="today"){
+      const d = dateSel.value;
+      return recs.filter(r => (r.ts||"").startsWith(d));
+    }
+    if(MODE==="month"){
+      const m = monthSel.value;
+      return recs.filter(r => (r.ts||"").startsWith(m));
+    }
+    return recs;
+  }
+
+  function render(){
+    errBox.textContent = "";
+    if(!DATA){ return; }
+
+    const recs = filterRecs();
+    const ins = recs.filter(r => r.type==="in");
+    const outs = recs.filter(r => r.type==="out");
+
+    const inCny = ins.reduce((a,r)=>a+safeNum(r.amount_cny),0);
+    const inU = ins.reduce((a,r)=>a+safeNum(r.amount_usdt),0);
+    const outU = outs.reduce((a,r)=>a+safeNum(r.amount_usdt),0);
+    const remainU = inU - outU;
+
+    document.getElementById("kpiIn").textContent = `${Math.round(inCny)} | ${fmt2(inU)}U`;
+    document.getElementById("kpiOut").textContent = `${fmt2(outU)}U`;
+    document.getElementById("kpiRemain").textContent = `${fmt2(remainU)}U`;
+
+    const titleIn = (MODE==="month") ? "本月入款" : (MODE==="all" ? "全部入款" : "今日入款");
+    const titleOut = (MODE==="month") ? "本月下发" : (MODE==="all" ? "全部下发" : "今日下发");
+
+    let lines = [];
+    lines.push(DATA.title || "金鸿集团记账机器人");
+    lines.push("");
+    lines.push(`${titleIn}（${ins.length}笔）`);
+
+    if(!ins.length){
+      lines.push("暂无入款");
+    }else{
+      ins.sort((a,b)=>(a.ts||"").localeCompare(b.ts||""));
+      let idx=1;
+      for(const r of ins){
+        const t = (r.ts||"").slice(11,19) || "--:--:--";
+        const cny = Math.abs(safeNum(r.amount_cny));
+        const u = Math.abs(safeNum(r.amount_usdt));
+        const rate = safeNum(r.rate);
+        const who = (r.who||"").trim();
+        const remark = (r.remark||"").trim();
+        const tail = [who, remark].filter(Boolean).join("  ");
+        const sign = safeNum(r.amount_cny) < 0 ? "-" : "";
+        let line = "";
+        if(rate>0 && u!==0){
+          line = `${idx}. ${t} ${sign}${Math.round(cny)} / ${rate:g} = ${fmt2(u)}U`;
+        }else{
+          line = `${idx}. ${t} ${sign}${Math.round(cny)}`;
+        }
+        if(tail) line += `  ${tail}`;
+        lines.push(line);
+        idx++;
+      }
+    }
+
+    lines.push("");
+    lines.push(`${titleOut}（${outs.length}笔）`);
+    if(!outs.length){
+      lines.push("暂无下发");
+    }else{
+      outs.sort((a,b)=>(a.ts||"").localeCompare(b.ts||""));
+      let idx=1;
+      for(const r of outs){
+        const t = (r.ts||"").slice(11,19) || "--:--:--";
+        const u = safeNum(r.amount_usdt);
+        const who = (r.who||"").trim();
+        const remark = (r.remark||"").trim();
+        const tail = [who, remark].filter(Boolean).join("  ");
+        let uText = Math.abs(u - Math.round(u))<1e-9 ? `${Math.round(u)}U` : `${fmt2(u)}U`;
+        let line = `${idx}. ${t} ${uText}`;
+        if(tail) line += `  ${tail}`;
+        lines.push(line);
+        idx++;
+      }
+    }
+
+    lines.push("");
+    lines.push("———————————————");
+    lines.push(`总入款：${Math.round(inCny)} | ${fmt2(inU)}U`);
+    lines.push(`总下发：${fmt2(outU)}U`);
+    lines.push(`未下发：${fmt2(remainU)}U`);
+
+    billPre.textContent = lines.join("\n");
+
+    metaInfo.textContent = `更新：${DATA.updated_at || "-"}`;
+
+    filtersCard.style.display = "";
+    kpiCard.style.display = "";
+    billCard.style.display = "";
+    setStatus("已加载 ✅", true);
+  }
+
+  async function fetchJson(){
+    errBox.textContent = "";
+    setStatus("加载中...", true);
+    billPre.textContent = "加载中...";
+    const url = `./bills/${encodeURIComponent(K)}.json?t=${Date.now()}`;
+    try{
+      const res = await fetch(url, {cache:"no-store"});
+      if(!res.ok){
+        throw new Error(`HTTP ${res.status}：找不到 ${url}`);
+      }
+      const js = await res.json();
+      DATA = js;
+      buildOptions();
+      render();
+    }catch(e){
+      setStatus("加载失败 ❌", false);
+      errBox.textContent = "加载失败：" + e.message + "（请确认：bills/目录里有对应的 k.json，并且 Pages 已开启）";
+      billPre.textContent = "加载失败";
+      filtersCard.style.display = "none";
+      kpiCard.style.display = "none";
+      billCard.style.display = "none";
+    }
+  }
+
+  function setMode(m){
+    MODE = m;
+    document.querySelectorAll(".tab").forEach(t=>{
+      t.classList.toggle("active", t.dataset.mode===m);
+    });
+    dateSel.style.display = (m==="today") ? "" : "none";
+    monthSel.style.display = (m==="month") ? "" : "none";
+    render();
+  }
+
+  document.getElementById("loadBtn").onclick = ()=>{
+    const v = kInput.value.trim();
+    if(!v){ errBox.textContent="请输入 k"; return; }
+    K = v;
+    const u = new URL(location.href);
+    u.searchParams.set("k", K);
+    history.replaceState(null,"",u.toString());
+    fetchJson();
+  };
+  document.getElementById("refreshBtn").onclick = ()=> fetchJson();
+  document.getElementById("copyLinkBtn").onclick = async ()=>{
+    const u = new URL(location.href);
+    if(K) u.searchParams.set("k", K);
+    await navigator.clipboard.writeText(u.toString());
+    setStatus("链接已复制 ✅", true);
+    setTimeout(()=>setStatus(DATA?"已加载 ✅":"未加载", true), 1200);
+  };
+
+  document.querySelectorAll(".tab").forEach(t=>{
+    t.onclick = ()=> setMode(t.dataset.mode);
+  });
+
+  // init from query
+  const qp = new URLSearchParams(location.search);
+  const k0 = (qp.get("k") || "").trim();
+  if(k0){
+    K = k0;
+    kInput.value = k0;
+    fetchJson();
+  }else{
+    setStatus("未加载", true);
+  }
+</script>
+</body>
+</html>
