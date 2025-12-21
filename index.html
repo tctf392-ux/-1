@@ -252,7 +252,7 @@
     errBox.textContent = "";
     setStatus("加载中...", true);
     billPre.textContent = "加载中...";
-    const url = `./bills/${encodeURIComponent(K)}.json?t=${Date.now()}`;
+    const url = `./bills/bills/${encodeURIComponent(K)}.json?t=${Date.now()}`;
     try{
       const res = await fetch(url, {cache:"no-store"});
       if(!res.ok){
@@ -317,3 +317,4 @@
 </script>
 </body>
 </html>
+
