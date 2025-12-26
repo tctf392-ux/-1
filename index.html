@@ -30,7 +30,7 @@ pre{background:#0b1220;border:1px solid #263244;border-radius:12px;padding:12px;
 
 <div class="card">
   <div class="row">
-    <input id="k" placeholder="输入账单 k" style="flex:1"/>
+    <input id="k" placeholder="输入账单 k（机器人给你的）" style="flex:1"/>
     <button class="primary" onclick="load()">加载账单</button>
   </div>
   <div id="err" class="err"></div>
@@ -60,7 +60,8 @@ async function load(){
   setStatus("加载中…");
   out.textContent="加载中…";
 
-  const url = `./bills/bills/${encodeURIComponent(k)}.json?t=${Date.now()}`;
+  // ✅ 正确路径（只一层 bills）
+  const url = `./bills/${encodeURIComponent(k)}.json?t=${Date.now()}`;
 
   try{
     const r = await fetch(url,{cache:"no-store"});
@@ -70,7 +71,7 @@ async function load(){
     setStatus("已加载 ✅");
   }catch(e){
     setStatus("加载失败 ❌",false);
-    err.textContent="找不到账单文件："+url;
+    err.textContent="找不到账单文件：" + url;
     out.textContent="";
   }
 }
