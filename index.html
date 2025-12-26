@@ -31,7 +31,7 @@ pre{background:#0b1220;border:1px solid #263244;border-radius:12px;padding:12px;
 <div class="card">
   <div class="row">
     <input id="k" placeholder="输入账单 k（机器人给你的）" style="flex:1"/>
-    <button class="primary" onclick="load()">加载账单</button>
+    <button class="primary" onclick="loadBill()">加载账单</button>
   </div>
   <div id="err" class="err"></div>
 </div>
@@ -53,33 +53,38 @@ function setStatus(t, ok=true){
   statusEl.style.borderColor = ok ? "#263244" : "#ff6b73";
 }
 
-async function load(){
+async function loadBill(){
   const k = kInput.value.trim();
-  if(!k){ err.textContent="请输入 k"; return; }
-  err.textContent="";
-  setStatus("加载中…");
-  out.textContent="加载中…";
+  if(!k){
+    err.textContent = "请输入账单 k";
+    return;
+  }
 
-  // ✅ 正确路径（只一层 bills）
+  err.textContent = "";
+  setStatus("加载中…");
+  out.textContent = "加载中…";
+
+  // ✅ 正确路径（只有一层 bills）
   const url = `./bills/${encodeURIComponent(k)}.json?t=${Date.now()}`;
 
   try{
     const r = await fetch(url,{cache:"no-store"});
-    if(!r.ok) throw new Error("HTTP "+r.status);
+    if(!r.ok) throw new Error("HTTP " + r.status);
     const j = await r.json();
-    out.textContent = JSON.stringify(j,null,2);
+    out.textContent = JSON.stringify(j, null, 2);
     setStatus("已加载 ✅");
   }catch(e){
-    setStatus("加载失败 ❌",false);
-    err.textContent="找不到账单文件：" + url;
-    out.textContent="";
+    setStatus("加载失败 ❌", false);
+    err.textContent = "找不到账单文件：" + url;
+    out.textContent = "";
   }
 }
 
+// 自动读取 ?k=
 const qp = new URLSearchParams(location.search);
 if(qp.get("k")){
   kInput.value = qp.get("k");
-  load();
+  loadBill();
 }
 </script>
 </body>
