@@ -56,12 +56,11 @@ function setStatus(t, ok=true){
 async function load(){
   const k = kInput.value.trim();
   if(!k){ err.textContent="请输入 k"; return; }
-
   err.textContent="";
   setStatus("加载中…");
   out.textContent="加载中…";
 
-  // ✅ 正确路径（只一层 bills）
+  // ✅ 正确路径：只有一层 bills
   const url = `./bills/${encodeURIComponent(k)}.json?t=${Date.now()}`;
 
   try{
@@ -77,6 +76,7 @@ async function load(){
   }
 }
 
+// 自动从 ?k=xxx 加载
 const qp = new URLSearchParams(location.search);
 if(qp.get("k")){
   kInput.value = qp.get("k");
