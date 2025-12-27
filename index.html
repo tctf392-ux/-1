@@ -14,7 +14,8 @@ button{cursor:pointer}
 button.primary{background:#d11d2a;border-color:#d11d2a}
 pre{background:#0b1220;border:1px solid #263244;border-radius:12px;padding:12px;white-space:pre-wrap}
 .pill{padding:6px 10px;border-radius:999px;border:1px solid #263244}
-.err{color:#ff6b73}
+.err{color:#ff6b73;word-break:break-all}
+small{opacity:.75}
 </style>
 </head>
 
@@ -26,12 +27,13 @@ pre{background:#0b1220;border:1px solid #263244;border-radius:12px;padding:12px;
     <div>📒 金鸿集团 · 完整账单</div>
     <span id="status" class="pill">未加载</span>
   </div>
+  <small id="hint"></small>
 </div>
 
 <div class="card">
   <div class="row">
-    <input id="k" placeholder="输入账单 k（机器人给的）" style="flex:1"/>
-    <button class="primary" onclick="load()">加载账单</button>
+    <input id="k" placeholder="输入账单 k" style="flex:1"/>
+    <button class="primary" onclick="loadBill()">加载账单</button>
   </div>
   <div id="err" class="err"></div>
 </div>
@@ -47,24 +49,30 @@ const statusEl = document.getElementById("status");
 const out = document.getElementById("out");
 const err = document.getElementById("err");
 const kInput = document.getElementById("k");
+const hint = document.getElementById("hint");
 
 function setStatus(t, ok=true){
   statusEl.textContent = t;
   statusEl.style.borderColor = ok ? "#263244" : "#ff6b73";
 }
 
-async function load(){
+function baseDir(){
+  // 例如：/ - 或 /-1/
+  // location.pathname 可能是 "/-1/" 或 "/-1/index.html"
+  const p = location.pathname.endsWith("/") ? location.pathname : location.pathname.replace(/[^\/]+$/, "");
+  return location.origin + p;
+}
+
+async function loadBill(){
   const k = kInput.value.trim();
-  if(!k){
-    err.textContent="请输入账单 k";
-    return;
-  }
+  if(!k){ err.textContent="请输入 k"; return; }
   err.textContent="";
   setStatus("加载中…");
   out.textContent="加载中…";
 
-  // ✅ 关键修正点：真实路径
-  const url = `./bills/bills/${encodeURIComponent(k)}.json?t=${Date.now()}`;
+  // ✅ 固定：bills/bills/<k>.json
+  const url = `${baseDir()}bills/bills/${encodeURIComponent(k)}.json?t=${Date.now()}`;
+  hint.textContent = "读取地址：" + url;
 
   try{
     const r = await fetch(url,{cache:"no-store"});
@@ -74,15 +82,16 @@ async function load(){
     setStatus("已加载 ✅");
   }catch(e){
     setStatus("加载失败 ❌",false);
-    err.textContent="找不到账单文件：" + url;
+    err.textContent="找不到账单文件： " + url;
     out.textContent="";
   }
 }
 
+// 自动读取 ?k=
 const qp = new URLSearchParams(location.search);
 if(qp.get("k")){
   kInput.value = qp.get("k");
-  load();
+  loadBill();
 }
 </script>
 </body>
